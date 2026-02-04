@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.in/yaml.v3"
 	"github.com/dagu-org/dagu/api/v2"
 	"github.com/dagu-org/dagu/internal/auth"
 	"github.com/dagu-org/dagu/internal/cmn/collections"
@@ -149,15 +150,22 @@ func (a *API) EnqueueDAGRunFromSpec(ctx context.Context, request api.EnqueueDAGR
 		return nil, err
 	}
 
-	if request.Body == nil || request.Body.Spec == "" {
+	if request.Body == nil {
 		return nil, &Error{
 			HTTPStatus: http.StatusBadRequest,
 			Code:       api.ErrorCodeBadRequest,
-			Message:    "spec is required",
+			Message:    "no body was given",
 		}
 	}
 
-	var dagRunId, params string
+	if request.Body.Spec == nil && request.Body.Filename == nil || request.Body.Spec != nil && request.Body.Filename != nil{
+		return nil, &Error{
+			HTTPStatus: http.StatusBadRequest,
+			Code:       api.ErrorCodeBadRequest,
+			Message:    "either give spec or url; don't give both",
+		}
+	}
+	var dagRunId, params, filename string
 	if request.Body.DagRunId != nil {
 		dagRunId = *request.Body.DagRunId
 	}
@@ -171,8 +179,64 @@ func (a *API) EnqueueDAGRunFromSpec(ctx context.Context, request api.EnqueueDAGR
 	if request.Body.Params != nil {
 		params = *request.Body.Params
 	}
+	if request.Body.Filename != nil {
+		filename = *request.Body.Filename
+	}
+	var finalSpec string
+	if strings.HasSuffix(filename, ".yaml") || strings.HasSuffix(filename, ".yml") {
+		// filename = fmt.Sprintf("/home/sahalbelam/.config/dagu/dags/%s", filename)
+		baseData, err := os.ReadFile(a.config.Paths.BaseConfig) //nolint:gosec
+		if err != nil {
+			return nil, fmt.Errorf("error reading base config: %w", err)
+		}
 
-	dag, cleanup, err := a.loadInlineDAG(ctx, request.Body.Spec, request.Body.Name, dagRunId)
+		obj := make(map[string]any)
+		err = yaml.Unmarshal(baseData,&obj) 
+		if err != nil {
+			return nil, fmt.Errorf("error unmarshalling base config: %w", err)
+		}
+
+		altDagDir := obj["env"].([]any)[0].(string)
+		fmt.Println("ALDAGDIR",altDagDir)
+
+		if strings.HasPrefix(altDagDir, "ALT_DAGS_DIR=") {
+			altDagDir = strings.TrimPrefix(altDagDir, "ALT_DAGS_DIR=")
+			filename = fmt.Sprintf("%s/%s", altDagDir, filepath.Base(filename))
+		} else {
+			return nil, &Error{
+				HTTPStatus: http.StatusBadRequest,
+				Code:       api.ErrorCodeBadRequest,
+				Message:    "Make sure ALT_DAGS_DIR is set in the config file",
+			}
+		}
+		const maxSpecBytes = 1 << 20 // 1 MiB (tune or reuse config)
+		info, err := os.Stat(filename)
+		if err != nil {
+			return nil, fmt.Errorf("error stating file: %w", err)
+		}
+		if info.Size() > maxSpecBytes {
+			return nil, &Error{
+				HTTPStatus: http.StatusBadRequest,
+				Code:       api.ErrorCodeBadRequest,
+				Message:    "spec file too large",
+			}
+		}
+		data, err := os.ReadFile(filename) //nolint:gosec
+		if err != nil {
+			return nil, fmt.Errorf("Error reading file: %w", err)
+		}
+		finalSpec = string(data)
+	} else if request.Body.Spec != nil {
+		finalSpec = *request.Body.Spec
+	} else {
+		return nil, &Error{
+			HTTPStatus: http.StatusBadRequest,
+			Code:       api.ErrorCodeBadRequest,
+			Message:    "Make sure file is a yaml file",
+		}
+	}
+
+	dag, cleanup, err := a.loadInlineDAG(ctx, finalSpec, request.Body.Name, dagRunId)
 	if err != nil {
 		return nil, err
 	}

@@ -1613,8 +1613,12 @@ paths:
                 queue:
                   type: string
                   description: "Override the queue to use for this DAG-run"
-              required:
-                - spec
+                filename:
+                  type: string
+                  description: "Filename for the yaml file"
+              oneOf:
+                - required: [spec]
+                - required: [filename]
       responses:
         "200":
           description: "DAG-run successfully enqueued"
