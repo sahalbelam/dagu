@@ -15,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"gopkg.in/yaml.v3"
 	"github.com/dagu-org/dagu/api/v2"
 	"github.com/dagu-org/dagu/internal/auth"
 	"github.com/dagu-org/dagu/internal/cmn/collections"
@@ -158,7 +157,7 @@ func (a *API) EnqueueDAGRunFromSpec(ctx context.Context, request api.EnqueueDAGR
 		}
 	}
 
-	if request.Body.Spec == nil && request.Body.Filename == nil || request.Body.Spec != nil && request.Body.Filename != nil{
+	if request.Body.Spec == nil && request.Body.Filename == nil || request.Body.Spec != nil && request.Body.Filename != nil {
 		return nil, &Error{
 			HTTPStatus: http.StatusBadRequest,
 			Code:       api.ErrorCodeBadRequest,
@@ -184,24 +183,9 @@ func (a *API) EnqueueDAGRunFromSpec(ctx context.Context, request api.EnqueueDAGR
 	}
 	var finalSpec string
 	if strings.HasSuffix(filename, ".yaml") || strings.HasSuffix(filename, ".yml") {
-		// filename = fmt.Sprintf("/home/sahalbelam/.config/dagu/dags/%s", filename)
-		baseData, err := os.ReadFile(a.config.Paths.BaseConfig) //nolint:gosec
-		if err != nil {
-			return nil, fmt.Errorf("error reading base config: %w", err)
-		}
-
-		obj := make(map[string]any)
-		err = yaml.Unmarshal(baseData,&obj) 
-		if err != nil {
-			return nil, fmt.Errorf("error unmarshalling base config: %w", err)
-		}
-
-		altDagDir := obj["env"].([]any)[0].(string)
-		fmt.Println("ALDAGDIR",altDagDir)
-
-		if strings.HasPrefix(altDagDir, "ALT_DAGS_DIR=") {
-			altDagDir = strings.TrimPrefix(altDagDir, "ALT_DAGS_DIR=")
-			filename = fmt.Sprintf("%s/%s", altDagDir, filepath.Base(filename))
+		// Use configured alternate DAGs directory if provided
+		if a.config != nil && a.config.Paths.AltDAGsDir != "" {
+			filename = fmt.Sprintf("%s/%s", a.config.Paths.AltDAGsDir, filepath.Base(filename))
 		} else {
 			return nil, &Error{
 				HTTPStatus: http.StatusBadRequest,

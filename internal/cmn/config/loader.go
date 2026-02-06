@@ -311,6 +311,7 @@ func (l *ConfigLoader) loadPathsConfig(cfg *Config, def Definition) error {
 		source string
 	}{
 		{"DAGsDir", &cfg.Paths.DAGsDir, def.Paths.DAGsDir},
+		{"AltDAGsDir", &cfg.Paths.AltDAGsDir, def.Paths.AltDagsDir},
 		{"SuspendFlagsDir", &cfg.Paths.SuspendFlagsDir, def.Paths.SuspendFlagsDir},
 		{"DataDir", &cfg.Paths.DataDir, def.Paths.DataDir},
 		{"LogDir", &cfg.Paths.LogDir, def.Paths.LogDir},
